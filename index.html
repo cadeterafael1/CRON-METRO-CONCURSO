@@ -26,7 +26,18 @@ ul.sessions{list-style:none;padding:0;margin:0;max-height:280px;overflow:auto}ul
 .badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:.75rem;font-weight:700;background:#334155;color:var(--muted)}.badge.ok{background:#14532d;color:#bbf7d0}.badge.warn{background:#78350f;color:#fde68a}.badge.danger{background:#7f1d1d;color:#fecaca}
 pre.preview{white-space:pre-wrap;word-break:break-word;background:var(--sub);padding:12px;border-radius:10px;max-height:240px;overflow:auto}
 footer{color:var(--muted);font-size:.8rem;text-align:center;margin:20px 0}@media(max-width:480px){button{flex:1 1 40%}.card{padding:14px}}
-.alarm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}.alarm-option{background:var(--sub);border:1px solid var(--line);border-radius:14px;padding:12px}.alarm-option strong{display:block;margin-bottom:4px}.alarm-option select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt)}.theme-select{padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--sub);color:var(--txt)}.stat-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}.mini-stat{background:var(--sub);border:1px solid var(--line);border-radius:13px;padding:10px;text-align:center}.mini-stat b{display:block;font-size:1.15rem}.mini-stat span{font-size:.72rem;color:var(--muted)}.section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:999px;background:var(--sub);border:1px solid var(--line);font-size:.78rem;color:var(--muted)}@media(max-width:560px){.stat-strip{grid-template-columns:1fr 1fr 1fr}.theme-select{width:100%}}</style>
+.alarm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:12px}.alarm-option{background:var(--sub);border:1px solid var(--line);border-radius:14px;padding:12px}.alarm-option strong{display:block;margin-bottom:4px}.alarm-option select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--txt)}.theme-select{padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--sub);color:var(--txt)}.stat-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}.mini-stat{background:var(--sub);border:1px solid var(--line);border-radius:13px;padding:10px;text-align:center}.mini-stat b{display:block;font-size:1.15rem}.mini-stat span{font-size:.72rem;color:var(--muted)}.section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:999px;background:var(--sub);border:1px solid var(--line);font-size:.78rem;color:var(--muted)}@media(max-width:560px){.stat-strip{grid-template-columns:1fr 1fr 1fr}.theme-select{width:100%}}
+.sync-controls{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.btn-sync{padding:8px 12px;font-size:.82rem;border-radius:10px;background:#0f766e;color:#ecfeff;border:1px solid rgba(94,234,212,.35);white-space:nowrap}
+.sync-status{font-size:.72rem;color:var(--muted);max-width:150px}
+.sync-modal{position:fixed;inset:0;background:rgba(2,6,23,.82);display:none;align-items:center;justify-content:center;padding:18px;z-index:200}
+.sync-modal.show{display:flex}
+.sync-dialog{width:min(100%,440px);background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 20px 60px #0009}
+.sync-dialog h2{margin:0 0 10px}.sync-dialog p{font-size:.88rem;color:var(--muted)}
+.sync-dialog input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--sub);color:var(--txt);font-size:1rem;margin:8px 0}
+.sync-dialog .btns{justify-content:flex-end}.sync-dialog button{padding:10px 14px;font-size:.9rem}
+@media(max-width:560px){.sync-controls{width:100%;justify-content:flex-start}.sync-status{max-width:none}}
+</style>
 </head>
 <body>
 <div class="container">
@@ -40,6 +51,10 @@ footer{color:var(--muted);font-size:.8rem;text-align:center;margin:20px 0}@media
       <option value="blue">🔷 Azul Focus</option><option value="emerald">🟢 Esmeralda</option>
       <option value="purple">🟣 Roxo</option><option value="sand">🟠 Âmbar</option><option value="ice">🧊 Gelo</option>
     </select>
+    <div class="sync-controls">
+      <button id="btnSync" class="btn-sync" type="button">☁️ Sincronizar</button>
+      <span id="syncStatus" class="sync-status" role="status">Nuvem não configurada</span>
+    </div>
     <button id="btnAlarm" class="b-acc" type="button">⏰ Configurar alarme</button>
   </div>
 </header>
@@ -166,6 +181,19 @@ footer{color:var(--muted);font-size:.8rem;text-align:center;margin:20px 0}@media
 <footer>fococoncurso — armazenamento local no navegador. Armazenamento persistente e backups externos dependem do navegador, permissões e do dispositivo. Nenhum mecanismo local garante perda zero.</footer>
 </div>
 <div id="toast" class="toast"></div>
+<div id="syncModal" class="sync-modal" role="dialog" aria-modal="true" aria-labelledby="syncModalTitle">
+  <div class="sync-dialog">
+    <h2 id="syncModalTitle">Conectar ao GitHub</h2>
+    <p>Informe seu Fine-grained Personal Access Token com permissão <b>Gists: Read and write</b>. Ele será guardado somente neste navegador/aparelho e não será incluído no Gist nem nos backups JSON.</p>
+    <label for="syncTokenInput" class="small">Token do GitHub</label>
+    <input id="syncTokenInput" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="github_pat_..." />
+    <p><b>Privacidade:</b> o token não é publicado, mas fica acessível ao código desta página neste aparelho. Use apenas em uma cópia confiável do aplicativo e não compartilhe o dispositivo/navegador com pessoas não confiáveis.</p>
+    <div class="btns">
+      <button id="btnTokenCancel" class="b-ghost" type="button">Cancelar</button>
+      <button id="btnTokenSave" class="b-acc" type="button">Salvar e sincronizar</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (()=>{
@@ -648,6 +676,163 @@ function render(){if(!state)return;const t=state.timer,ms=elapsed();$('time').te
 $('optAlarm').checked=state.alarmEnabled!==false;
 $('alarmVolume').value=Math.round((Number.isFinite(Number(state.alarmVolume))?Number(state.alarmVolume):1)*100);
 $('alarmVolumeVal').textContent=Math.round((Number.isFinite(Number(state.alarmVolume))?Number(state.alarmVolume):1)*100)+'%';renderDiagnostics();if(t.recoverable){$('recoveryCard').style.display='block';$('recoveryText').textContent=`Sessão interrompida detectada. Último checkpoint: ${t.lastRecoveryTs?br(new Date(t.lastRecoveryTs).toISOString()):'não informado'}. O tempo após esse ponto NÃO será contabilizado sem confirmação.`}}
+
+// Sincronização opcional com GitHub Gist. O token permanece apenas neste navegador.
+const GIST_ID='914ee90f73c319680aed480c45eac05d';
+const GIST_FILE='fococoncurso-sync.json';
+const TOKEN_KEY='fococoncurso_github_token_v1';
+let syncBusy=false;
+function syncStatus(message,ok=null){
+  const el=$('syncStatus');if(!el)return;
+  el.textContent=message;
+  el.style.color=ok===true?'#65dca0':ok===false?'#ff9b8f':'';
+}
+function openTokenModal(){
+  $('syncTokenInput').value='';
+  $('syncModal').classList.add('show');
+  setTimeout(()=>$('syncTokenInput').focus(),50);
+}
+function closeTokenModal(){$('syncModal').classList.remove('show')}
+function getGitHubToken(){try{return localStorage.getItem(TOKEN_KEY)||''}catch(e){return ''}}
+function saveGitHubToken(token){
+  if(!token||token.length<20)throw Error('Token aparentemente inválido.');
+  if(!/^github_pat_[A-Za-z0-9_]+$/.test(token)&&!/^gh[pousr]_[A-Za-z0-9]+$/.test(token))
+    throw Error('Formato de token não reconhecido. Confira se copiou o token completo.');
+  localStorage.setItem(TOKEN_KEY,token);
+}
+async function githubRequest(method,body=null){
+  const token=getGitHubToken();
+  if(!token)throw Error('Token não configurado.');
+  const response=await fetch(`https://api.github.com/gists/${GIST_ID}`,{
+    method,
+    headers:{
+      'Accept':'application/vnd.github+json',
+      'Authorization':`Bearer ${token}`,
+      'X-GitHub-Api-Version':'2022-11-28',
+      ...(body?{'Content-Type':'application/json'}:{})
+    },
+    body:body?JSON.stringify(body):undefined,
+    cache:'no-store'
+  });
+  if(response.status===401||response.status===403)throw Error('GitHub recusou o token ou a permissão Gists. Confira o acesso do token.');
+  if(response.status===404)throw Error('Gist não encontrado ou sem permissão para acessá-lo.');
+  if(!response.ok){
+    let detail='';try{const j=await response.json();detail=j.message||''}catch(e){}
+    throw Error(`GitHub respondeu ${response.status}${detail?': '+detail:''}.`);
+  }
+  return response.json();
+}
+async function readRemoteGist(){
+  const gist=await githubRequest('GET');
+  const file=gist.files?.[GIST_FILE];
+  if(!file)return null;
+  let content=file.content||'';
+  if(file.truncated&&file.raw_url){
+    const r=await fetch(file.raw_url,{cache:'no-store',headers:{'Authorization':`Bearer ${getGitHubToken()}`,'Accept':'application/vnd.github+json'}});
+    if(!r.ok)throw Error('Não foi possível baixar o arquivo completo do Gist.');
+    content=await r.text();
+  }
+  if(!content.trim())throw Error('O arquivo de sincronização no Gist está vazio; sincronização cancelada para proteger os dados.');
+  let parsed;
+  try{parsed=JSON.parse(content)}catch(e){throw Error('O arquivo remoto não contém JSON válido. Seus dados locais foram preservados.')}
+  if(parsed?.format!=='fococoncurso-gist-sync'||!parsed.data)throw Error('O conteúdo remoto não corresponde ao formato de sincronização do FocoConcurso.');
+  const remote=migrate(parsed.data);validate(remote);
+  return {gist,remote,revision:parsed.revision||null};
+}
+function mergeSyncStates(local,remote){
+  const merged=migrate(JSON.parse(JSON.stringify(local)));
+  const byId=new Map();
+  for(const item of [...(remote.sessions||[]),...(local.sessions||[])]){
+    if(item?.id&&!byId.has(item.id))byId.set(item.id,item);
+  }
+  merged.sessions=[...byId.values()].sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,MAX_SESSIONS);
+  const sumSessions=merged.sessions.reduce((n,x)=>n+(Number(x.ms)||0),0);
+  // Total nunca diminui; sessões com IDs distintos dos dois aparelhos são somadas uma única vez.
+  merged.total=Math.max(Number(local.total)||0,Number(remote.total)||0,sumSessions);
+  const now=new Date(),dk=dayKey(now),wk=weekKey(now),mk=monthKey(now),yk=yearKey(now);
+  let daily=0,weekly=0,monthly=0,yearly=0;
+  for(const x of merged.sessions){
+    const d=new Date(x.at),ms=Number(x.ms)||0;
+    if(dayKey(d)===dk)daily+=ms;
+    if(weekKey(d)===wk)weekly+=ms;
+    if(monthKey(d)===mk)monthly+=ms;
+    if(yearKey(d)===yk)yearly+=ms;
+  }
+  merged.daily=Math.max(daily,Number(local.daily)||0,Number(remote.daily)||0);
+  merged.weekly=Math.max(weekly,Number(local.weekly)||0,Number(remote.weekly)||0);
+  merged.monthly=Math.max(monthly,Number(local.monthly)||0,Number(remote.monthly)||0);
+  merged.yearly=Math.max(yearly,Number(local.yearly)||0,Number(remote.yearly)||0);
+  const history=new Map();
+  for(const h of [...(remote.history||[]),...(local.history||[])]){
+    if(h&&h.day)history.set(h.day,Math.max(Number(history.get(h.day))||0,Number(h.ms)||0));
+  }
+  merged.history=[...history.entries()].map(([day,ms])=>({day,ms})).sort((a,b)=>a.day.localeCompare(b.day)).slice(-1000);
+  // Preferências seguem o estado com atualização mais recente. O cronômetro ativo nunca é importado da nuvem.
+  const preferred=(Date.parse(remote.updatedAt)||0)>(Date.parse(local.updatedAt)||0)?remote:local;
+  for(const k of ['dailyGoal','sound','autoRestart','wake','alarmEnabled','alarmVolume','alarmTone','theme'])merged[k]=preferred[k]??merged[k];
+  merged.timer={...local.timer};
+  merged.keys={day:dk,week:wk,month:mk,year:yk};
+  merged.updatedAt=new Date().toISOString();
+  merged.lastSaved=merged.updatedAt;
+  validate(merged);
+  return merged;
+}
+async function syncWithGitHub(){
+  if(syncBusy)return;
+  if(!state){toast('⚠️ Aguarde o carregamento dos dados locais.');return}
+  let token=getGitHubToken();
+  if(!token){openTokenModal();return}
+  syncBusy=true;
+  const btn=$('btnSync');btn.disabled=true;btn.textContent='⏳ Sincronizando';
+  syncStatus('Conectando ao GitHub…');
+  try{
+    // Salva primeiro o estado local atual e só então consulta a nuvem.
+    const localBefore=JSON.parse(serialize());
+    const remoteResult=await readRemoteGist();
+    let merged;
+    if(remoteResult){
+      merged=mergeSyncStates(localBefore,remoteResult.remote);
+    }else{
+      merged=migrate(JSON.parse(JSON.stringify(localBefore)));
+      merged.timer={...localBefore.timer};
+    }
+    const payload={
+      format:'fococoncurso-gist-sync',
+      version:1,
+      app:'fococoncurso',
+      revision:uid(),
+      syncedAt:new Date().toISOString(),
+      data:merged
+    };
+    const patch={files:{[GIST_FILE]:{content:JSON.stringify(payload)} }};
+    await githubRequest('PATCH',patch);
+    // Confirma leitura posterior. Se houver outra gravação simultânea, não sobrescreve automaticamente.
+    const verify=await readRemoteGist();
+    if(!verify)throw Error('O GitHub não retornou o arquivo após a gravação.');
+    if(verify.revision!==payload.revision){
+      syncStatus('Possível conflito entre aparelhos',false);
+      toast('⚠️ Houve outra gravação simultânea. Seus dados locais foram mantidos; sincronize novamente.');
+      return;
+    }
+    state=merged;
+    const saved=await persist(true);
+    if(!saved)throw Error('A nuvem foi atualizada, mas não foi possível confirmar a gravação local.');
+    syncStatus('Sincronizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),true);
+    render();
+    toast(`☁️ Sincronização concluída: ${merged.sessions.length} sessões compartilhadas.`);
+  }catch(e){
+    console.error('Sincronização GitHub:',e);
+    syncStatus('Falha na sincronização',false);
+    toast('❌ '+(e?.message||String(e)));
+  }finally{
+    syncBusy=false;btn.disabled=false;btn.textContent='☁️ Sincronizar';
+  }
+}
+function forgetGitHubToken(){
+  if(!confirm('Apagar o Token salvo neste navegador? A sincronização exigirá o Token novamente.'))return;
+  try{localStorage.removeItem(TOKEN_KEY);syncStatus('Token removido',false);toast('Token removido deste navegador.')}catch(e){toast('Não foi possível remover o Token: '+e.message)}
+}
+
 function bind(){
 $('btnAlarm').onclick=()=>{const p=$('alarmPanel');p.style.display=p.style.display==='none'?'block':'none'};
 $('themeSelect').onchange=e=>{state.theme=e.target.value;document.body.className=state.theme!=='blue'?'theme-'+state.theme:'';persist(true);render()};
@@ -659,7 +844,7 @@ $('alarmVolume').oninput=e=>{$('alarmVolumeVal').textContent=e.target.value+'%';
 $('alarmVolume').onchange=()=>{persist(true);render()};
 $('btnStart').onclick=start;$('btnPause').onclick=pause;$('btnStop').onclick=stop;$('btnDiscard').onclick=discard;$('btnExport').onclick=exportJSON;$('btnCopy').onclick=copyJSON;$('btnImport').onclick=()=>$('fileInput').click();$('btnPaste').onclick=()=>{const t=prompt('Cole o JSON do backup:');if(t)importText(t.trim())};$('btnPersist').onclick=askPersistence;$('btnRetrySave').onclick=()=>persist(true);$('btnMerge').onclick=mergeImport;$('btnReplace').onclick=replaceImport;$('btnCancelImport').onclick=()=>{$('importPreview').style.display='none';pendingImport=null;$('fileInput').value=''};$('btnRecover').onclick=recoverSaved;$('btnRecoverNow').onclick=recoverNow;$('btnDiscardRecovery').onclick=discardRecovery;$('fileInput').onchange=async e=>{const input=e.target,f=input.files?.[0];if(!f){input.value='';return}try{const text=await f.text();await importText(text)}catch(err){console.error(err);toast('❌ Falha ao ler o arquivo: '+(err?.message||'erro desconhecido'))}finally{input.value=''}};$('goalInput').onchange=e=>{const n=parseFloat(String(e.target.value).replace(',','.'));if(!Number.isFinite(n)||n<=0){toast('❌ Meta inválida.');render();return}state.dailyGoal=Math.round(n*HOUR);persist(true);render()};$('optSound').onchange=e=>{state.sound=e.target.checked;persist(true)};$('optAuto').onchange=e=>{state.autoRestart=e.target.checked;persist(true);render()};$('optWake').onchange=e=>{state.wake=e.target.checked;persist(true);applyWake()};document.querySelectorAll('.edit').forEach(b=>b.onclick=()=>editMarker(b.dataset.k));document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){tick();applyWake();storageInfo()}else checkpoint()});window.addEventListener('pagehide',()=>{emergencyCheckpoint();persist(true)});window.addEventListener('beforeunload',emergencyCheckpoint);window.addEventListener('focus',tick);window.addEventListener('pageshow',()=>tick());window.addEventListener('online',()=>persist(true));window.addEventListener('storage',e=>{if(e.key!==LS_KEY||!e.newValue)return;try{const inc=migrate(JSON.parse(e.newValue));validate(inc);if((Date.parse(inc.updatedAt)||0)>(Date.parse(state.updatedAt)||0)){state=inc;if(state.timer.running){state.timer.running=false;state.timer.recoverable=true}render();toast('⚠️ Dados atualizados em outra aba; sessão ativa marcada para revisão.')}}catch(e){}})}
 async function load(){const c=await candidates();if(!c.length){state=defaults();saveUI('Salvando','Primeiro uso: criando armazenamento local seguro.');await persist(true)}else{c.sort((a,b)=>{const x=score(a.s),y=score(b.s);for(let i=0;i<x.length;i++){if(y[i]!==x[i])return y[i]-x[i]}return 0;});const best=c[0];state=migrate(best.s);const wasRunning=!!state.timer.running;if(wasRunning){const checkpoint=state.timer.lastRecoveryTs||state.timer.startTs||Date.now();const recovered=Math.max(0,Math.min(HOUR-(state.timer.accMs||0),checkpoint-(state.timer.startTs||checkpoint)));state.timer.accMs=Math.min(HOUR,(state.timer.accMs||0)+recovered)}state.timer.running=false;state.timer.startTs=null;state.timer.recoverable=wasRunning;timerMonoStart=null;dirty=true;await persist(true);if(best.source!=='localStorage v3'&&best.source!=='IndexedDB')toast('♻️ Dados recuperados de '+best.source)}await storageInfo()}
-(async()=>{try{await load();bind();render();timerId=setInterval(tick,500);setInterval(()=>{if(state?.timer?.running||dirty)checkpoint()},EVERY)}catch(e){console.error(e);saveUI('Falha ao salvar',e.message||String(e));toast('❌ Falha crítica: '+(e.message||e))}})();
+(async()=>{try{await load();bind();if(getGitHubToken())syncStatus('Token salvo neste aparelho',true);render();timerId=setInterval(tick,500);setInterval(()=>{if(state?.timer?.running||dirty)checkpoint()},EVERY)}catch(e){console.error(e);saveUI('Falha ao salvar',e.message||String(e));toast('❌ Falha crítica: '+(e.message||e))}})();
 })();
 </script>
 </body>
