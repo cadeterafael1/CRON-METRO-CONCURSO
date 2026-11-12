@@ -184,9 +184,11 @@ footer{color:var(--muted);font-size:.8rem;text-align:center;margin:20px 0}@media
 <div id="syncModal" class="sync-modal" role="dialog" aria-modal="true" aria-labelledby="syncModalTitle">
   <div class="sync-dialog">
     <h2 id="syncModalTitle">Conectar ao GitHub</h2>
-    <p>Informe seu Fine-grained Personal Access Token com permissão <b>Gists: Read and write</b>. Ele será guardado somente neste navegador/aparelho e não será incluído no Gist nem nos backups JSON.</p>
-    <label for="syncTokenInput" class="small">Token do GitHub</label>
-    <input id="syncTokenInput" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="github_pat_..." />
+    <p>Informe o ID do Gist e o Token do GitHub. O token precisa ter permissão <b>Gists: Read and write</b>. Os dois dados serão guardados somente neste navegador/aparelho e não serão incluídos no arquivo de sincronização nem nos backups JSON.</p>
+    <label for="syncGistInput" class="small">1. ID do Gist</label>
+    <input id="syncGistInput" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Ex.: 914ee90f73c319680aed480c45eac05d" />
+    <label for="syncTokenInput" class="small" style="display:block;margin-top:12px">2. Token do GitHub</label>
+    <input id="syncTokenInput" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="ghp_... ou github_pat_..." />
     <p><b>Privacidade:</b> o token não é publicado, mas fica acessível ao código desta página neste aparelho. Use apenas em uma cópia confiável do aplicativo e não compartilhe o dispositivo/navegador com pessoas não confiáveis.</p>
     <div class="btns">
       <button id="btnTokenCancel" class="b-ghost" type="button">Cancelar</button>
@@ -375,27 +377,43 @@ async function persist(force=false){
 function elapsed(){const t=state?.timer;if(!t)return 0;const live=t.running&&t.startTs?activeDelta():0;return Math.min(HOUR,Math.max(0,(Number(t.accMs)||0)+live))}
 function addSession(ms,type,startAt,endAt){if(!Number.isFinite(ms)||ms<=0)return false;const end=new Date(endAt||Date.now()),start=startAt?new Date(startAt):new Date(end.getTime()-ms);const s={id:uid(),at:end.toISOString(),ms:Math.min(HOUR,Math.round(ms)),type:type||'manual',startAt:start.toISOString(),endAt:end.toISOString()};state.sessions.unshift(s);state.sessions=state.sessions.slice(0,MAX_SESSIONS);return s}
 function splitByDay(startMs,duration){const out=[];let cur=startMs,end=startMs+duration;while(cur<end){const d=new Date(cur),next=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1),stop=Math.min(end,next.getTime());out.push({day:dayKey(d),week:weekKey(d),month:monthKey(d),year:yearKey(d),ms:stop-cur});cur=stop}return out}
-function addTime(ms,type,startAt,endAt){const s=addSession(ms,type,startAt,endAt);if(!s)return false;const now=new Date(s.at),sessionDay=dayKey(now),sessionWeek=weekKey(now),sessionMonth=monthKey(now),sessionYear=yearKey(now),cur=new Date();if(sessionDay===dayKey(cur))state.daily+=s.ms;if(sessionWeek===weekKey(cur))state.weekly+=s.ms;if(sessionMonth===monthKey(cur))state.monthly+=s.ms;if(sessionYear===yearKey(cur))state.yearly+=s.ms;state.total+=s.ms;return s}
-function recomputeCurrentAggregates(){
-  const now=new Date(),curDay=dayKey(now),curWeek=weekKey(now),curMonth=monthKey(now),curYear=yearKey(now);
-  let d=0,w=0,m=0,y=0;
-  for(const s of state.sessions){
-    // A sessão inteira pertence à data/hora em que foi encerrada, mesmo que tenha começado no dia anterior.
-    const ended=new Date(s.at);
-    if(Number.isNaN(ended.getTime()))continue;
-    const ms=Number(s.ms)||0;
-    if(dayKey(ended)===curDay)d+=ms;
-    if(weekKey(ended)===curWeek)w+=ms;
-    if(monthKey(ended)===curMonth)m+=ms;
-    if(yearKey(ended)===curYear)y+=ms;
-  }
-  state.daily=d;
-  state.weekly=w;
-  state.monthly=m;
-  state.yearly=y;
+function addTime(ms,type,startAt,endAt){
+  const s=addSession(ms,type,startAt,endAt);
+  if(!s)return false;
+  // Totais de período são sempre reconstruídos a partir do histórico, nunca
+  // incrementados sobre marcadores antigos que possam estar duplicados.
+  state.total=Math.max(0,Number(state.total)||0)+s.ms;
+  recomputeCurrentAggregates();
+  return s;
 }
+function aggregateSessions(sessions,now=new Date()){
+  const keys={day:dayKey(now),week:weekKey(now),month:monthKey(now),year:yearKey(now)};
+  const buckets={day:new Map(),week:new Map(),month:new Map(),year:new Map()};
+  const add=(map,key,a,b)=>{if(b>a){if(!map.has(key))map.set(key,[]);map.get(key).push([a,b])}};
+  for(const s of (Array.isArray(sessions)?sessions:[])){
+    const end=Date.parse(s?.at),ms=Math.min(HOUR,Math.max(0,Number(s?.ms)||0));
+    if(!Number.isFinite(end)||!ms)continue;
+    let cur=end-ms;
+    while(cur<end){
+      const date=new Date(cur),next=new Date(date.getFullYear(),date.getMonth(),date.getDate()+1),stop=Math.min(end,next.getTime());
+      add(buckets.day,dayKey(date),cur,stop);
+      add(buckets.week,weekKey(date),cur,stop);
+      add(buckets.month,monthKey(date),cur,stop);
+      add(buckets.year,yearKey(date),cur,stop);
+      cur=stop;
+    }
+  }
+  const union=(ranges)=>{
+    if(!ranges?.length)return 0;
+    ranges.sort((a,b)=>a[0]-b[0]);let total=0,a=ranges[0][0],b=ranges[0][1];
+    for(let i=1;i<ranges.length;i++){const x=ranges[i];if(x[0]<=b)b=Math.max(b,x[1]);else{total+=b-a;a=x[0];b=x[1]}}
+    return total+b-a;
+  };
+  return {daily:Math.min(DAY,union(buckets.day.get(keys.day))),weekly:Math.min(7*DAY,union(buckets.week.get(keys.week))),monthly:Math.min(31*DAY,union(buckets.month.get(keys.month))),yearly:Math.min(366*DAY,union(buckets.year.get(keys.year)))};
+}
+function recomputeCurrentAggregates(){Object.assign(state,aggregateSessions(state.sessions));}
 
-function rollover(){const n=new Date(),cur={day:dayKey(n),week:weekKey(n),month:monthKey(n),year:yearKey(n)};let ch=false;if(state.keys.day!==cur.day){state.history.push({day:state.keys.day,ms:state.daily});state.history=state.history.slice(-1000);state.daily=0;state.keys.day=cur.day;ch=true}if(state.keys.week!==cur.week){state.weekly=0;state.keys.week=cur.week;ch=true}if(state.keys.month!==cur.month){state.monthly=0;state.keys.month=cur.month;ch=true}if(state.keys.year!==cur.year){state.yearly=0;state.keys.year=cur.year;ch=true}if(ch)persist(true)}
+function rollover(){const n=new Date(),cur={day:dayKey(n),week:weekKey(n),month:monthKey(n),year:yearKey(n)};let ch=false;if(state.keys.day!==cur.day){state.history.push({day:state.keys.day,ms:state.daily});state.history=state.history.slice(-1000);state.daily=0;state.keys.day=cur.day;ch=true}if(state.keys.week!==cur.week){state.weekly=0;state.keys.week=cur.week;ch=true}if(state.keys.month!==cur.month){state.monthly=0;state.keys.month=cur.month;ch=true}if(state.keys.year!==cur.year){state.yearly=0;state.keys.year=cur.year;ch=true}if(ch){recomputeCurrentAggregates();persist(true)}}
 async function start(){
   if(!state||state.timer.running||startBusy)return;
   startBusy=true;
@@ -436,7 +454,7 @@ function pause(){
 function stop(){
   const ms=elapsed();
   if(ms<1000){resetTimer();return}
-  const end=Date.now(),start=state.timer.startTs||end-ms;
+  const end=Date.now(),start=(state.timer.startTs?Number(state.timer.startTs)-(Number(state.timer.accMs)||0):end-ms);
   addTime(ms,'manual',new Date(start).toISOString(),new Date(end).toISOString());
   state.timer={running:false,startTs:null,accMs:0,lastRecoveryTs:null,sessionId:null,recoverable:false};
   timerMonoStart=null;
@@ -456,31 +474,29 @@ function discard(){if(elapsed()>0&&!confirm('Descartar o tempo atual sem contabi
 async function completeHour(){
   if(!state?.timer?.running)return;
   const now=Date.now();
-  let start=Number(state.timer.startTs)||now;
-  let accumulated=Math.max(0,Number(state.timer.accMs)||0);
-  let completed=0;
-  // Processa todos os ciclos cujo limite já passou. O próximo ciclo começa
-  // no instante exato do limite anterior, e não no momento em que o usuário
-  // volta a abrir o aplicativo; assim, o tempo excedente não é descartado.
-  while(accumulated+(now-start)>=HOUR){
-    const end=start+(HOUR-accumulated);
-    addTime(HOUR,'limite-1h',new Date(start-accumulated).toISOString(),new Date(end).toISOString());
-    completed++;
-    accumulated=0;
-    start=end;
-    if(!state.autoRestart)break;
-  }
-  if(!completed)return;
+  const start=Number(state.timer.startTs)||now;
+  const accumulated=Math.max(0,Number(state.timer.accMs)||0);
+  const elapsedMs=Math.max(0,accumulated+(now-start));
+  if(elapsedMs<HOUR)return;
+
+  // Contabiliza somente um ciclo por vez. Se o navegador/telefone suspender
+  // o aplicativo por várias horas, não transforma todo esse intervalo em
+  // estudo automaticamente. O próximo ciclo começa no instante da retomada.
+  const sessionStart=start-accumulated;
+  const sessionEnd=sessionStart+HOUR;
+  addTime(HOUR,'limite-1h',new Date(sessionStart).toISOString(),new Date(sessionEnd).toISOString());
+  const missed=Math.max(0,elapsedMs-HOUR);
+
   if(state.autoRestart){
-    state.timer={running:true,startTs:start,accMs:0,lastRecoveryTs:now,sessionId:uid(),recoverable:false};
+    state.timer={running:true,startTs:now,accMs:0,lastRecoveryTs:now,sessionId:uid(),recoverable:false};
     timerMonoStart=null;
     emergencyCheckpoint();
     await persist(true);
     render();
     applyWake();
     await playAlarm(false);
-    sendNotif('fococoncurso',completed===1?'1 hora concluída e contabilizada!':`${completed} ciclos de 1 hora concluídos e contabilizados!`);
-    toast(completed===1?'⏱ Novo ciclo iniciado automaticamente.':`⏱ ${completed} ciclos recuperados; o ciclo atual foi mantido.`);
+    sendNotif('fococoncurso','1 hora concluída e contabilizada!');
+    toast(missed>60000?'⏱ 1 hora contabilizada. Novo ciclo iniciado agora; tempo de suspensão não foi contado.':'⏱ 1 hora concluída. Novo ciclo iniciado automaticamente.');
   }else{
     state.timer={running:false,startTs:null,accMs:0,lastRecoveryTs:null,sessionId:null,recoverable:false};
     timerMonoStart=null;
@@ -489,6 +505,7 @@ async function completeHour(){
     await playAlarm(false);
     sendNotif('fococoncurso','1 hora concluída e contabilizada!');
     applyWake();
+    if(missed>60000)toast('⏱ 1 hora contabilizada. O tempo excedente durante a suspensão não foi contado.');
   }
 }
 function checkpoint(){if(!state?.timer?.running)return;state.timer.lastRecoveryTs=Date.now();emergencyCheckpoint();renderDiagnostics();persist(true)}
@@ -672,14 +689,15 @@ async function replaceImport(){
   }
 }
 function editMarker(k){const names={daily:'Diário',weekly:'Semanal',monthly:'Mensal',yearly:'Anual',total:'Total acumulado'};const v=prompt(`Novo valor para ${names[k]} (horas):`,(state[k]/HOUR).toFixed(2));if(v===null)return;const n=parseFloat(String(v).replace(',','.'));if(!Number.isFinite(n)||n<0){toast('❌ Valor inválido.');return}state[k]=Math.round(n*HOUR);persist(true);render()}
-function render(){if(!state)return;const t=state.timer,ms=elapsed();$('time').textContent=fmtClock(ms);$('barTimer').style.width=(ms/HOUR*100)+'%';$('timerStatus').textContent=t.running?'⏱ Contando…':t.recoverable?'⚠️ Sessão interrompida — recuperação disponível':t.accMs>0?'⏸ Pausado':'Pronto para começar';$('btnStart').disabled=t.running;$('btnPause').disabled=!t.running;$('btnStop').disabled=!(t.running||t.accMs>0);$('btnDiscard').disabled=!(t.running||t.accMs>0);const live=state.daily+(t.running||t.accMs>0?ms:0),goal=Math.max(HOUR/2,state.dailyGoal),pct=Math.min(100,live/goal*100);$('mDaily').textContent=fmtH(live);$('mWeekly').textContent=fmtH(state.weekly+(live-state.daily));$('mMonthly').textContent=fmtH(state.monthly+(live-state.daily));$('mYearly').textContent=fmtH(state.yearly+(live-state.daily));$('mTotal').textContent=fmtH(state.total);$('kDaily').textContent=dayKey(new Date());$('kWeekly').textContent=weekKey(new Date());$('kMonthly').textContent=monthKey(new Date());$('kYearly').textContent=yearKey(new Date());$('barGoal').style.width=pct+'%';$('goalStatus').textContent=live>=goal?'✅ Meta de hoje atingida!':`Faltam ${fmtH(goal-live)} (${pct.toFixed(0)}%)`;if(document.activeElement!==$('goalInput'))$('goalInput').value=state.dailyGoal/HOUR;const m=Math.floor(state.total/(5*HOUR)),tr=Math.floor(state.total/(10*HOUR));$('medalCount').textContent=`${m} 🏅`;$('trophyCount').textContent=`${tr} 🏆`;$('medalNext').textContent=`Próxima medalha em ${fmtH(Math.max(0,(m+1)*5*HOUR-state.total))}`;$('trophyNext').textContent=`Próximo troféu em ${fmtH(Math.max(0,(tr+1)*10*HOUR-state.total))}`;$('medalIcons').textContent='🏅'.repeat(Math.min(m,60))+(m>60?` +${m-60}`:'');$('trophyIcons').textContent='🏆'.repeat(Math.min(tr,40))+(tr>40?` +${tr-40}`:'');$('sessions').innerHTML=state.sessions.length?state.sessions.map(x=>`<li><span>${esc(br(x.at))} — ${esc(x.type)}</span><span>+${fmtH(x.ms)}</span></li>`).join(''):'<li><span>Nenhuma sessão registrada ainda.</span></li>';const age=state.lastBackup?(Date.now()-Date.parse(state.lastBackup))/DAY:Infinity;$('backupBanner').classList.toggle('show',age>7);$('backupState').textContent=state.lastBackup?br(state.lastBackup):'Nunca';$('backupDetail').textContent=state.lastBackup?'backup externo registrado':'backup externo pendente';$('optSound').checked=!!state.sound;$('optAuto').checked=!!state.autoRestart;$('optWake').checked=!!state.wake;$('themeSelect').value=state.theme||'blue';document.body.className=state.theme&&state.theme!=='blue'?'theme-'+state.theme:'';$('alarmTone').value=state.alarmTone||'classic';$('miniToday').textContent=fmtH(live);$('miniTotal').textContent=fmtH(state.total);$('miniSessions').textContent=String(state.sessions.length);
+function render(){if(!state)return;const t=state.timer,ms=elapsed();$('time').textContent=fmtClock(ms);$('barTimer').style.width=(ms/HOUR*100)+'%';$('timerStatus').textContent=t.running?'⏱ Contando…':t.recoverable?'⚠️ Sessão interrompida — recuperação disponível':t.accMs>0?'⏸ Pausado':'Pronto para começar';$('btnStart').disabled=t.running;$('btnPause').disabled=!t.running;$('btnStop').disabled=!(t.running||t.accMs>0);$('btnDiscard').disabled=!(t.running||t.accMs>0);const live=Math.min(DAY,state.daily+(t.running||t.accMs>0?ms:0)),liveExtra=Math.max(0,live-state.daily),goal=Math.max(HOUR/2,state.dailyGoal),pct=Math.min(100,live/goal*100);$('mDaily').textContent=fmtH(live);$('mWeekly').textContent=fmtH(Math.min(7*DAY,state.weekly+liveExtra));$('mMonthly').textContent=fmtH(Math.min(31*DAY,state.monthly+liveExtra));$('mYearly').textContent=fmtH(Math.min(366*DAY,state.yearly+liveExtra));$('mTotal').textContent=fmtH(state.total);$('kDaily').textContent=dayKey(new Date());$('kWeekly').textContent=weekKey(new Date());$('kMonthly').textContent=monthKey(new Date());$('kYearly').textContent=yearKey(new Date());$('barGoal').style.width=pct+'%';$('goalStatus').textContent=live>=goal?'✅ Meta de hoje atingida!':`Faltam ${fmtH(goal-live)} (${pct.toFixed(0)}%)`;if(document.activeElement!==$('goalInput'))$('goalInput').value=state.dailyGoal/HOUR;const m=Math.floor(state.total/(5*HOUR)),tr=Math.floor(state.total/(10*HOUR));$('medalCount').textContent=`${m} 🏅`;$('trophyCount').textContent=`${tr} 🏆`;$('medalNext').textContent=`Próxima medalha em ${fmtH(Math.max(0,(m+1)*5*HOUR-state.total))}`;$('trophyNext').textContent=`Próximo troféu em ${fmtH(Math.max(0,(tr+1)*10*HOUR-state.total))}`;$('medalIcons').textContent='🏅'.repeat(Math.min(m,60))+(m>60?` +${m-60}`:'');$('trophyIcons').textContent='🏆'.repeat(Math.min(tr,40))+(tr>40?` +${tr-40}`:'');$('sessions').innerHTML=state.sessions.length?state.sessions.map(x=>`<li><span>${esc(br(x.at))} — ${esc(x.type)}</span><span>+${fmtH(x.ms)}</span></li>`).join(''):'<li><span>Nenhuma sessão registrada ainda.</span></li>';const age=state.lastBackup?(Date.now()-Date.parse(state.lastBackup))/DAY:Infinity;$('backupBanner').classList.toggle('show',age>7);$('backupState').textContent=state.lastBackup?br(state.lastBackup):'Nunca';$('backupDetail').textContent=state.lastBackup?'backup externo registrado':'backup externo pendente';$('optSound').checked=!!state.sound;$('optAuto').checked=!!state.autoRestart;$('optWake').checked=!!state.wake;$('themeSelect').value=state.theme||'blue';document.body.className=state.theme&&state.theme!=='blue'?'theme-'+state.theme:'';$('alarmTone').value=state.alarmTone||'classic';$('miniToday').textContent=fmtH(live);$('miniTotal').textContent=fmtH(state.total);$('miniSessions').textContent=String(state.sessions.length);
 $('optAlarm').checked=state.alarmEnabled!==false;
 $('alarmVolume').value=Math.round((Number.isFinite(Number(state.alarmVolume))?Number(state.alarmVolume):1)*100);
 $('alarmVolumeVal').textContent=Math.round((Number.isFinite(Number(state.alarmVolume))?Number(state.alarmVolume):1)*100)+'%';renderDiagnostics();if(t.recoverable){$('recoveryCard').style.display='block';$('recoveryText').textContent=`Sessão interrompida detectada. Último checkpoint: ${t.lastRecoveryTs?br(new Date(t.lastRecoveryTs).toISOString()):'não informado'}. O tempo após esse ponto NÃO será contabilizado sem confirmação.`}}
 
 // Sincronização opcional com GitHub Gist. O token permanece apenas neste navegador.
-const GIST_ID='914ee90f73c319680aed480c45eac05d';
+const DEFAULT_GIST_ID='914ee90f73c319680aed480c45eac05d';
 const GIST_FILE='fococoncurso-sync.json';
+const GIST_KEY='fococoncurso_gist_id_v1';
 const TOKEN_KEY='fococoncurso_github_token_v1';
 let syncBusy=false;
 function syncStatus(message,ok=null){
@@ -688,9 +706,16 @@ function syncStatus(message,ok=null){
   el.style.color=ok===true?'#65dca0':ok===false?'#ff9b8f':'';
 }
 function openTokenModal(){
-  $('syncTokenInput').value='';
+  $('syncGistInput').value=getGistId()||DEFAULT_GIST_ID;
+  $('syncTokenInput').value=getGitHubToken();
   $('syncModal').classList.add('show');
-  setTimeout(()=>$('syncTokenInput').focus(),50);
+  setTimeout(()=>$('syncGistInput').focus(),50);
+}
+function getGistId(){try{return (localStorage.getItem(GIST_KEY)||'').trim()}catch(e){return ''}}
+function saveGistId(value){
+  const id=String(value||'').trim();
+  if(!/^[a-f0-9]{20,40}$/i.test(id))throw Error('ID do Gist inválido. Cole apenas o código do Gist, sem o endereço completo.');
+  localStorage.setItem(GIST_KEY,id);
 }
 function closeTokenModal(){$('syncModal').classList.remove('show')}
 function getGitHubToken(){try{return localStorage.getItem(TOKEN_KEY)||''}catch(e){return ''}}
@@ -703,7 +728,9 @@ function saveGitHubToken(token){
 async function githubRequest(method,body=null){
   const token=getGitHubToken();
   if(!token)throw Error('Token não configurado.');
-  const response=await fetch(`https://api.github.com/gists/${GIST_ID}`,{
+  const gistId=getGistId();
+  if(!gistId)throw Error('ID do Gist não configurado. Clique na nuvem e informe o ID.');
+  const response=await fetch(`https://api.github.com/gists/${gistId}`,{
     method,
     headers:{
       'Accept':'application/vnd.github+json',
@@ -749,19 +776,10 @@ function mergeSyncStates(local,remote){
   const sumSessions=merged.sessions.reduce((n,x)=>n+(Number(x.ms)||0),0);
   // Total nunca diminui; sessões com IDs distintos dos dois aparelhos são somadas uma única vez.
   merged.total=Math.max(Number(local.total)||0,Number(remote.total)||0,sumSessions);
-  const now=new Date(),dk=dayKey(now),wk=weekKey(now),mk=monthKey(now),yk=yearKey(now);
-  let daily=0,weekly=0,monthly=0,yearly=0;
-  for(const x of merged.sessions){
-    const d=new Date(x.at),ms=Number(x.ms)||0;
-    if(dayKey(d)===dk)daily+=ms;
-    if(weekKey(d)===wk)weekly+=ms;
-    if(monthKey(d)===mk)monthly+=ms;
-    if(yearKey(d)===yk)yearly+=ms;
-  }
-  merged.daily=Math.max(daily,Number(local.daily)||0,Number(remote.daily)||0);
-  merged.weekly=Math.max(weekly,Number(local.weekly)||0,Number(remote.weekly)||0);
-  merged.monthly=Math.max(monthly,Number(local.monthly)||0,Number(remote.monthly)||0);
-  merged.yearly=Math.max(yearly,Number(local.yearly)||0,Number(remote.yearly)||0);
+  // Recalcular períodos pela união dos intervalos das sessões únicas. Se duas
+  // sessões se sobrepuserem (por duplicação entre aparelhos), o tempo comum
+  // será contado apenas uma vez.
+  Object.assign(merged,aggregateSessions(merged.sessions));
   const history=new Map();
   for(const h of [...(remote.history||[]),...(local.history||[])]){
     if(h&&h.day)history.set(h.day,Math.max(Number(history.get(h.day))||0,Number(h.ms)||0));
@@ -771,7 +789,8 @@ function mergeSyncStates(local,remote){
   const preferred=(Date.parse(remote.updatedAt)||0)>(Date.parse(local.updatedAt)||0)?remote:local;
   for(const k of ['dailyGoal','sound','autoRestart','wake','alarmEnabled','alarmVolume','alarmTone','theme'])merged[k]=preferred[k]??merged[k];
   merged.timer={...local.timer};
-  merged.keys={day:dk,week:wk,month:mk,year:yk};
+  const syncDate=new Date();
+  merged.keys={day:dayKey(syncDate),week:weekKey(syncDate),month:monthKey(syncDate),year:yearKey(syncDate)};
   merged.updatedAt=new Date().toISOString();
   merged.lastSaved=merged.updatedAt;
   validate(merged);
@@ -834,6 +853,20 @@ function forgetGitHubToken(){
 }
 
 function bind(){
+$('btnSync').onclick=()=>{if(!getGistId()||!getGitHubToken())openTokenModal();else syncWithGitHub()};
+$('btnTokenCancel').onclick=closeTokenModal;
+$('btnTokenSave').onclick=()=>{
+  try{
+    saveGistId($('syncGistInput').value);
+    saveGitHubToken($('syncTokenInput').value.trim());
+    closeTokenModal();
+    syncStatus('Configuração salva neste aparelho');
+    syncWithGitHub();
+  }catch(e){toast('❌ '+(e?.message||String(e)))}
+};
+$('syncModal').addEventListener('click',e=>{if(e.target===$('syncModal'))closeTokenModal()});
+$('syncTokenInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('btnTokenSave').click()});
+$('syncGistInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('syncTokenInput').focus()});
 $('btnAlarm').onclick=()=>{const p=$('alarmPanel');p.style.display=p.style.display==='none'?'block':'none'};
 $('themeSelect').onchange=e=>{state.theme=e.target.value;document.body.className=state.theme!=='blue'?'theme-'+state.theme:'';persist(true);render()};
 $('alarmTone').onchange=e=>{state.alarmTone=e.target.value;persist(true);render()};
@@ -843,8 +876,8 @@ $('optAlarm').onchange=e=>{state.alarmEnabled=e.target.checked;persist(true);ren
 $('alarmVolume').oninput=e=>{$('alarmVolumeVal').textContent=e.target.value+'%';state.alarmVolume=Number(e.target.value)/100};
 $('alarmVolume').onchange=()=>{persist(true);render()};
 $('btnStart').onclick=start;$('btnPause').onclick=pause;$('btnStop').onclick=stop;$('btnDiscard').onclick=discard;$('btnExport').onclick=exportJSON;$('btnCopy').onclick=copyJSON;$('btnImport').onclick=()=>$('fileInput').click();$('btnPaste').onclick=()=>{const t=prompt('Cole o JSON do backup:');if(t)importText(t.trim())};$('btnPersist').onclick=askPersistence;$('btnRetrySave').onclick=()=>persist(true);$('btnMerge').onclick=mergeImport;$('btnReplace').onclick=replaceImport;$('btnCancelImport').onclick=()=>{$('importPreview').style.display='none';pendingImport=null;$('fileInput').value=''};$('btnRecover').onclick=recoverSaved;$('btnRecoverNow').onclick=recoverNow;$('btnDiscardRecovery').onclick=discardRecovery;$('fileInput').onchange=async e=>{const input=e.target,f=input.files?.[0];if(!f){input.value='';return}try{const text=await f.text();await importText(text)}catch(err){console.error(err);toast('❌ Falha ao ler o arquivo: '+(err?.message||'erro desconhecido'))}finally{input.value=''}};$('goalInput').onchange=e=>{const n=parseFloat(String(e.target.value).replace(',','.'));if(!Number.isFinite(n)||n<=0){toast('❌ Meta inválida.');render();return}state.dailyGoal=Math.round(n*HOUR);persist(true);render()};$('optSound').onchange=e=>{state.sound=e.target.checked;persist(true)};$('optAuto').onchange=e=>{state.autoRestart=e.target.checked;persist(true);render()};$('optWake').onchange=e=>{state.wake=e.target.checked;persist(true);applyWake()};document.querySelectorAll('.edit').forEach(b=>b.onclick=()=>editMarker(b.dataset.k));document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){tick();applyWake();storageInfo()}else checkpoint()});window.addEventListener('pagehide',()=>{emergencyCheckpoint();persist(true)});window.addEventListener('beforeunload',emergencyCheckpoint);window.addEventListener('focus',tick);window.addEventListener('pageshow',()=>tick());window.addEventListener('online',()=>persist(true));window.addEventListener('storage',e=>{if(e.key!==LS_KEY||!e.newValue)return;try{const inc=migrate(JSON.parse(e.newValue));validate(inc);if((Date.parse(inc.updatedAt)||0)>(Date.parse(state.updatedAt)||0)){state=inc;if(state.timer.running){state.timer.running=false;state.timer.recoverable=true}render();toast('⚠️ Dados atualizados em outra aba; sessão ativa marcada para revisão.')}}catch(e){}})}
-async function load(){const c=await candidates();if(!c.length){state=defaults();saveUI('Salvando','Primeiro uso: criando armazenamento local seguro.');await persist(true)}else{c.sort((a,b)=>{const x=score(a.s),y=score(b.s);for(let i=0;i<x.length;i++){if(y[i]!==x[i])return y[i]-x[i]}return 0;});const best=c[0];state=migrate(best.s);const wasRunning=!!state.timer.running;if(wasRunning){const checkpoint=state.timer.lastRecoveryTs||state.timer.startTs||Date.now();const recovered=Math.max(0,Math.min(HOUR-(state.timer.accMs||0),checkpoint-(state.timer.startTs||checkpoint)));state.timer.accMs=Math.min(HOUR,(state.timer.accMs||0)+recovered)}state.timer.running=false;state.timer.startTs=null;state.timer.recoverable=wasRunning;timerMonoStart=null;dirty=true;await persist(true);if(best.source!=='localStorage v3'&&best.source!=='IndexedDB')toast('♻️ Dados recuperados de '+best.source)}await storageInfo()}
-(async()=>{try{await load();bind();if(getGitHubToken())syncStatus('Token salvo neste aparelho',true);render();timerId=setInterval(tick,500);setInterval(()=>{if(state?.timer?.running||dirty)checkpoint()},EVERY)}catch(e){console.error(e);saveUI('Falha ao salvar',e.message||String(e));toast('❌ Falha crítica: '+(e.message||e))}})();
+async function load(){const c=await candidates();if(!c.length){state=defaults();saveUI('Salvando','Primeiro uso: criando armazenamento local seguro.');await persist(true)}else{c.sort((a,b)=>{const x=score(a.s),y=score(b.s);for(let i=0;i<x.length;i++){if(y[i]!==x[i])return y[i]-x[i]}return 0;});const best=c[0];state=migrate(best.s);recomputeCurrentAggregates();const wasRunning=!!state.timer.running;if(wasRunning){const checkpoint=state.timer.lastRecoveryTs||state.timer.startTs||Date.now();const recovered=Math.max(0,Math.min(HOUR-(state.timer.accMs||0),checkpoint-(state.timer.startTs||checkpoint)));state.timer.accMs=Math.min(HOUR,(state.timer.accMs||0)+recovered)}state.timer.running=false;state.timer.startTs=null;state.timer.recoverable=wasRunning;timerMonoStart=null;dirty=true;await persist(true);if(best.source!=='localStorage v3'&&best.source!=='IndexedDB')toast('♻️ Dados recuperados de '+best.source)}await storageInfo()}
+(async()=>{try{await load();bind();if(getGitHubToken()&&getGistId())syncStatus('Nuvem configurada neste aparelho',true);else syncStatus('Nuvem não configurada');render();timerId=setInterval(tick,500);setInterval(()=>{if(state?.timer?.running||dirty)checkpoint()},EVERY)}catch(e){console.error(e);saveUI('Falha ao salvar',e.message||String(e));toast('❌ Falha crítica: '+(e.message||e))}})();
 })();
 </script>
 </body>
