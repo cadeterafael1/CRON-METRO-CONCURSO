@@ -2,7 +2,12 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<meta name="description" content="Cronômetro e organizador de horas de estudo para concursos públicos.">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <title>fococoncurso V3</title>
 <style>
 :root{--bg:#0b1220;--card:#17233a;--sub:#0b1528;--txt:#eef6ff;--muted:#9fb0c8;--acc:#38bdf8;--ok:#34d399;--warn:#fbbf24;--danger:#fb7185;--gold:#facc15;--line:#29415f;--glow:rgba(56,189,248,.18)}
@@ -41,6 +46,11 @@ footer{color:var(--muted);font-size:.8rem;text-align:center;margin:20px 0}@media
 </head>
 <body>
 <div class="container">
+<div id="pwaInstallBox" style="display:none;margin:0 0 12px;padding:12px 14px;border:1px solid #29415f;border-radius:14px;background:#17233a;color:#eef6ff">
+  <div style="font-weight:800;margin-bottom:4px">📲 Instalar FocoConcurso</div>
+  <div id="pwaInstallText" style="font-size:.9rem;color:#9fb0c8;margin-bottom:9px">Adicione o aplicativo à tela inicial do celular.</div>
+  <button id="pwaInstallBtn" type="button" style="background:#38bdf8;color:#082f49;padding:9px 14px">Instalar aplicativo</button>
+</div>
 <header>
   <h1>fococoncurso <span>🎯</span></h1>
   <div class="row">
@@ -878,6 +888,30 @@ $('alarmVolume').onchange=()=>{persist(true);render()};
 $('btnStart').onclick=start;$('btnPause').onclick=pause;$('btnStop').onclick=stop;$('btnDiscard').onclick=discard;$('btnExport').onclick=exportJSON;$('btnCopy').onclick=copyJSON;$('btnImport').onclick=()=>$('fileInput').click();$('btnPaste').onclick=()=>{const t=prompt('Cole o JSON do backup:');if(t)importText(t.trim())};$('btnPersist').onclick=askPersistence;$('btnRetrySave').onclick=()=>persist(true);$('btnMerge').onclick=mergeImport;$('btnReplace').onclick=replaceImport;$('btnCancelImport').onclick=()=>{$('importPreview').style.display='none';pendingImport=null;$('fileInput').value=''};$('btnRecover').onclick=recoverSaved;$('btnRecoverNow').onclick=recoverNow;$('btnDiscardRecovery').onclick=discardRecovery;$('fileInput').onchange=async e=>{const input=e.target,f=input.files?.[0];if(!f){input.value='';return}try{const text=await f.text();await importText(text)}catch(err){console.error(err);toast('❌ Falha ao ler o arquivo: '+(err?.message||'erro desconhecido'))}finally{input.value=''}};$('goalInput').onchange=e=>{const n=parseFloat(String(e.target.value).replace(',','.'));if(!Number.isFinite(n)||n<=0){toast('❌ Meta inválida.');render();return}state.dailyGoal=Math.round(n*HOUR);persist(true);render()};$('optSound').onchange=e=>{state.sound=e.target.checked;persist(true)};$('optAuto').onchange=e=>{state.autoRestart=e.target.checked;persist(true);render()};$('optWake').onchange=e=>{state.wake=e.target.checked;persist(true);applyWake()};document.querySelectorAll('.edit').forEach(b=>b.onclick=()=>editMarker(b.dataset.k));document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){tick();applyWake();storageInfo()}else checkpoint()});window.addEventListener('pagehide',()=>{emergencyCheckpoint();persist(true)});window.addEventListener('beforeunload',emergencyCheckpoint);window.addEventListener('focus',tick);window.addEventListener('pageshow',()=>tick());window.addEventListener('online',()=>persist(true));window.addEventListener('storage',e=>{if(e.key!==LS_KEY||!e.newValue)return;try{const inc=migrate(JSON.parse(e.newValue));validate(inc);if((Date.parse(inc.updatedAt)||0)>(Date.parse(state.updatedAt)||0)){state=inc;if(state.timer.running){state.timer.running=false;state.timer.recoverable=true}render();toast('⚠️ Dados atualizados em outra aba; sessão ativa marcada para revisão.')}}catch(e){}})}
 async function load(){const c=await candidates();if(!c.length){state=defaults();saveUI('Salvando','Primeiro uso: criando armazenamento local seguro.');await persist(true)}else{c.sort((a,b)=>{const x=score(a.s),y=score(b.s);for(let i=0;i<x.length;i++){if(y[i]!==x[i])return y[i]-x[i]}return 0;});const best=c[0];state=migrate(best.s);recomputeCurrentAggregates();const wasRunning=!!state.timer.running;if(wasRunning){const checkpoint=state.timer.lastRecoveryTs||state.timer.startTs||Date.now();const recovered=Math.max(0,Math.min(HOUR-(state.timer.accMs||0),checkpoint-(state.timer.startTs||checkpoint)));state.timer.accMs=Math.min(HOUR,(state.timer.accMs||0)+recovered)}state.timer.running=false;state.timer.startTs=null;state.timer.recoverable=wasRunning;timerMonoStart=null;dirty=true;await persist(true);if(best.source!=='localStorage v3'&&best.source!=='IndexedDB')toast('♻️ Dados recuperados de '+best.source)}await storageInfo()}
 (async()=>{try{await load();bind();if(getGitHubToken()&&getGistId())syncStatus('Nuvem configurada neste aparelho',true);else syncStatus('Nuvem não configurada');render();timerId=setInterval(tick,500);setInterval(()=>{if(state?.timer?.running||dirty)checkpoint()},EVERY)}catch(e){console.error(e);saveUI('Falha ao salvar',e.message||String(e));toast('❌ Falha crítica: '+(e.message||e))}})();
+})();
+</script>
+<script>
+// PWA: este bloco só atua em HTTPS/localhost. O HTML aberto localmente continua independente.
+(()=>{
+  const box=document.getElementById('pwaInstallBox');
+  const btn=document.getElementById('pwaInstallBtn');
+  const msg=document.getElementById('pwaInstallText');
+  if(!box||!btn)return;
+  const secure=location.protocol==='https:'||location.hostname==='localhost';
+  if(!secure)return;
+  box.style.display='block';
+  let installEvent=null;
+  const standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  if(standalone){msg.textContent='FocoConcurso instalado neste aparelho.';btn.style.display='none';}
+  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvent=e;btn.textContent='Instalar aplicativo';msg.textContent='Instale o FocoConcurso na tela inicial.';});
+  window.addEventListener('appinstalled',()=>{installEvent=null;msg.textContent='FocoConcurso instalado com sucesso.';btn.style.display='none';});
+  btn.addEventListener('click',async()=>{
+    if(installEvent){installEvent.prompt();try{await installEvent.userChoice;}catch(e){}installEvent=null;return;}
+    msg.textContent='No Chrome: toque em ⋮ (três pontos) e escolha “Instalar app” ou “Adicionar à tela inicial”. Se a opção não aparecer, atualize a página e aguarde alguns instantes.';
+  });
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(err=>console.warn('Service Worker não registrado:',err)));
+  }
 })();
 </script>
 </body>
