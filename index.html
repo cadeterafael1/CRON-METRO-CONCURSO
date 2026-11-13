@@ -63,6 +63,7 @@ footer{color:var(--muted);font-size:.8rem;text-align:center;margin:20px 0}@media
     </select>
     <div class="sync-controls">
       <button id="btnSync" class="btn-sync" type="button">☁️ Sincronizar</button>
+      <button id="btnEditGitHub" class="b-ghost" type="button" style="font-size:.78rem;padding:7px 10px">🔑 Alterar ID / token</button>
       <span id="syncStatus" class="sync-status" role="status">Nuvem não configurada</span>
     </div>
     <button id="btnAlarm" class="b-acc" type="button">⏰ Configurar alarme</button>
@@ -864,6 +865,7 @@ function forgetGitHubToken(){
 
 function bind(){
 $('btnSync').onclick=()=>{if(!getGistId()||!getGitHubToken())openTokenModal();else syncWithGitHub()};
+$('btnEditGitHub').onclick=()=>openTokenModal();
 $('btnTokenCancel').onclick=closeTokenModal;
 $('btnTokenSave').onclick=()=>{
   try{
